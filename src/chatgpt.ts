@@ -11,14 +11,14 @@ import {
 
 const ErrorCode2Message: Record<string, string> = {
   "503":
-    "OpenAI 服务器繁忙，请稍后再试| The OpenAI server is busy, please try again later",
+    "忙死啦，忙不过来啦！你慢一点呀！",
   "429":
-    "OpenAI 服务器限流，请稍后再试| The OpenAI server was limited, please try again later",
+    "一条一条的说，不要急，急死你算咯！",
   "500":
-    "OpenAI 服务器繁忙，请稍后再试| The OpenAI server is busy, please try again later",
+    "服务器又不行了，哎我去真服啦！过一会再问我吧，我摆烂了。",
   "403":
-    "OpenAI 服务器拒绝访问，请稍后再试| The OpenAI server refused to access, please try again later",
-  unknown: "未知错误，请看日志 | Error unknown, please see the log",
+    "页面搞不见了，这个老六，等哈子看能不能自动恢复吧！",
+  unknown: "报错了，我啷个晓得发生了什么？你们谁喊群主过来修复一下吧。",
 };
 const Commands = ["/reset", "/help"] as const;
 export class ChatGPTPool {

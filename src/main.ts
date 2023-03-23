@@ -1,3 +1,4 @@
+console.log('main.ts')
 import { WechatyBuilder } from "wechaty";
 import QRCode from "qrcode";
 import { ChatGPTBot } from "./bot.js";
@@ -13,7 +14,8 @@ const bot =  WechatyBuilder.build({
 // get a Wechaty instance
 
 async function main() {
-  const initializedAt = Date.now()
+  let starttime=Date.now()
+  let old_flag=false
   await chatGPTBot.startGPTBot();
   bot
     .on("scan", async (qrcode, status) => {
@@ -28,11 +30,19 @@ async function main() {
       chatGPTBot.setBotName(user.name());
     })
     .on("message", async (message) => {
-      if (
-        !chatGPTBot.ready || 
-        message.date().getTime() < initializedAt
-      ) {
+      if (!chatGPTBot.ready) {
+        old_flag=false
         return;
+      }
+      else{
+        if (!old_flag){
+          starttime=Date.now()
+          old_flag=true
+        }
+        
+      }
+      if(Date.now()-starttime<30000){
+        return
       }
       if (message.text().startsWith("/ping")) {
         await message.say("pong");

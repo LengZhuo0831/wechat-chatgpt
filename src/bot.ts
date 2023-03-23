@@ -2,6 +2,8 @@ import { ChatGPTPool } from "./chatgpt.js";
 import { config } from "./config.js";
 import { ContactInterface, RoomInterface } from "wechaty/impls";
 import { Message } from "wechaty";
+import delay from "delay";
+
 enum MessageType {
   Unknown = 0,
 
@@ -22,29 +24,22 @@ enum MessageType {
   Video = 15, // Video(4), Video(43)
   Post = 16, // Moment, Channel, Tweet, etc
 }
+// function delay(timeInMillis: number): Promise<void> {
+//   return new Promise((resolve) => setTimeout(() => resolve(), timeInMillis));
+// }
 
 const SINGLE_MESSAGE_MAX_SIZE = 500;
 export class ChatGPTBot {
   // Record talkid with conversation id
   chatGPTPool = new ChatGPTPool();
   chatPrivateTiggerKeyword = config.chatPrivateTiggerKeyword;
-  chatTiggerRule = config.chatTiggerRule? new RegExp(config.chatTiggerRule): undefined;
-  disableGroupMessage = config.disableGroupMessage || false;
   botName: string = "";
   ready = false;
   setBotName(botName: string) {
     this.botName = botName;
   }
-  get chatGroupTiggerRegEx(): RegExp {
-    return new RegExp(`^@${this.botName}\\s`);
-  }
-  get chatPrivateTiggerRule(): RegExp | undefined {
-    const { chatPrivateTiggerKeyword, chatTiggerRule } = this;
-    let regEx = chatTiggerRule
-    if (!regEx && chatPrivateTiggerKeyword) {
-      regEx = new RegExp(chatPrivateTiggerKeyword)
-    }
-    return regEx
+  get chatGroupTiggerKeyword(): string {
+    return `@${this.botName}`;
   }
   async startGPTBot() {
     console.debug(`Start GPT Bot Config is:${JSON.stringify(config)}`);
@@ -61,19 +56,16 @@ export class ChatGPTBot {
     if (item.length > 1) {
       text = item[item.length - 1];
     }
-    
-    const { chatTiggerRule, chatPrivateTiggerRule } = this;
-    
-    if (privateChat && chatPrivateTiggerRule) {
-      text = text.replace(chatPrivateTiggerRule, "")
-    } else if (!privateChat) {
-      text = text.replace(this.chatGroupTiggerRegEx, "")
-      text = chatTiggerRule? text.replace(chatTiggerRule, ""): text
-    }
+    text = text.replace(
+      privateChat ? this.chatPrivateTiggerKeyword : this.chatGroupTiggerKeyword,
+      ""
+    );
     // remove more text via - - - - - - - - - - - - - - -
-    return text
+    return text;
   }
   async getGPTMessage(text: string, talkerId: string): Promise<string> {
+    //return "正在修复，等等。。"
+    console.log(`🎯 Triggered ChatGPT: ${text}`);
     return await this.chatGPTPool.sendMessage(text, talkerId);
   }
   // The message is segmented according to its size
@@ -89,26 +81,26 @@ export class ChatGPTBot {
     }
     messages.push(message);
     for (const msg of messages) {
+      const ttt = Date.now()
       await talker.say(msg);
+      await delay(2000)
     }
   }
   // Check whether the ChatGPT processing can be triggered
   tiggerGPTMessage(text: string, privateChat: boolean = false): boolean {
-    const { chatTiggerRule } = this;
+    const chatPrivateTiggerKeyword = this.chatPrivateTiggerKeyword;
     let triggered = false;
     if (privateChat) {
-      const regEx = this.chatPrivateTiggerRule
-      triggered = regEx? regEx.test(text): true;
+      triggered = chatPrivateTiggerKeyword
+        ? text.includes(chatPrivateTiggerKeyword)
+        : true;
+      triggered = false;
     } else {
-      triggered = this.chatGroupTiggerRegEx.test(text);
-      // group message support `chatTiggerRule`
-      if (triggered && chatTiggerRule) {
-        triggered = chatTiggerRule.test(text.replace(this.chatGroupTiggerRegEx, ""))
-      }
+      triggered = text.includes(this.chatGroupTiggerKeyword);
     }
-    if (triggered) {
-      console.log(`🎯 Triggered ChatGPT: ${text}`);
-    }
+    // if (triggered) {
+    //   console.log(`🎯 Triggered ChatGPT: ${text}`);
+    // }
     return triggered;
   }
   // Filter out the message that does not need to be processed
@@ -121,7 +113,7 @@ export class ChatGPTBot {
       talker.self() ||
       // TODO: add doc support
       messageType !== MessageType.Text ||
-      talker.name() === "微信团队" ||
+      talker.name() == "微信团队" ||
       // 语音(视频)消息
       text.includes("收到一条视频/语音聊天消息，请在手机上查看") ||
       // 红包消息
@@ -131,6 +123,11 @@ export class ChatGPTBot {
       // 位置消息
       text.includes("/cgi-bin/mmwebwx-bin/webwxgetpubliclinkimg")
     );
+  }
+  isTriggleGroup(
+    name: string
+  ):boolean{
+    return name.includes('chatgpt')
   }
 
   async onPrivateMessage(talker: ContactInterface, text: string) {
@@ -144,7 +141,12 @@ export class ChatGPTBot {
     text: string,
     room: RoomInterface
   ) {
+    console.log('room topic is',room.topic(),(await room.topic()).includes('chatgpt'))
+    if (!(await room.topic()).includes('chatgpt')){
+      return
+    }
     const talkerId = room.id + talker.id;
+    // const talkerId = room.id;
     const gptMessage = await this.getGPTMessage(text, talkerId);
     const result = `${text}\n ------\n ${gptMessage}`;
     await this.trySay(room, result);
@@ -153,21 +155,19 @@ export class ChatGPTBot {
     const talker = message.talker();
     const rawText = message.text();
     const room = message.room();
+    
     const messageType = message.type();
     const privateChat = !room;
     if (this.isNonsense(talker, messageType, rawText)) {
       return;
     }
+    
     if (this.tiggerGPTMessage(rawText, privateChat)) {
       const text = this.cleanMessage(rawText, privateChat);
       if (privateChat) {
         return await this.onPrivateMessage(talker, text);
-      } else{
-        if (!this.disableGroupMessage){
-          return await this.onGroupMessage(talker, text, room);
-        } else {
-          return;
-        }
+      } else {
+        return await this.onGroupMessage(talker, text, room);
       }
     } else {
       return;
